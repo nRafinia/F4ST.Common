@@ -361,5 +361,18 @@ namespace F4ST.Common.Extensions
             }
         }
 
+        public static void AddRange<T>(this ICollection<T> instance, IEnumerable<T> collection)
+        {
+            foreach (T obj in collection)
+                instance.Add(obj);
+        }
+
+        public static T Clone<T>(this T source)
+            where T : class //, new()
+        {
+            return source is null
+                ? default
+                : JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(source));
+        }
     }
 }

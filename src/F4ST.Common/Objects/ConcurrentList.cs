@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using F4ST.Common.Extensions;
 
 namespace F4ST.Common.Objects
 {
@@ -127,7 +128,8 @@ namespace F4ST.Common.Objects
             {
                 lock (_lock)
                 {
-                    return (IEnumerator<TValue>)_storage.ToArray().GetEnumerator();
+                    return _storage.Clone().GetEnumerator();
+                    //return (IEnumerator<TValue>)_storage.ToArray().GetEnumerator();
                 }
             }
         }

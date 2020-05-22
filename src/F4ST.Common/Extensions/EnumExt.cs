@@ -25,7 +25,7 @@ namespace F4ST.Common.Extensions
             return attributes != null ? attributes.GetName() : v.ToString();
         }
 
-        public static Dictionary<int, string> GetEnumList<T>(this T v)
+        public static Dictionary<int, string> GetEnumList<T>()
             where T:struct, IConvertible
         {
             var items = new Dictionary<int, string>();
