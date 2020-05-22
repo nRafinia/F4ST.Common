@@ -1,169 +1,139 @@
-﻿//A thread-safe, lock-free implementation of the IList<T> interface for .NET http://dtao.github.com/ConcurrentList
-using System;
-using System.Threading;
+﻿using System.Collections;
+using System.Collections.Generic;
 
 namespace F4ST.Common.Objects
 {
-    public class ConcurrentList<T> : ThreadSafeList<T>
+    /// <summary>
+    /// a thread-safe list with support for:
+    /// 1) negative indexes (read from end).  "myList[-1]" gets the last value
+    /// 2) modification while enumerating: enumerates a copy of the collection.
+    /// </summary>
+    public class ConcurrentList<TValue> : IList<TValue>
     {
-        static readonly int[] Sizes;
-        static readonly int[] Counts;
-
-        static ConcurrentList()
-        {
-            Sizes = new int[32];
-            Counts = new int[32];
-
-            int size = 1;
-            int count = 1;
-            for (int i = 0; i < Sizes.Length; i++)
-            {
-                Sizes[i] = size;
-                Counts[i] = count;
-
-                if (i < Sizes.Length - 1)
-                {
-                    size *= 2;
-                    count += size;
-                }
-            }
-        }
-
-        int _index;
-        int _fuzzyCount;
-        int _count;
-        T[][] _array;
-
-        public ConcurrentList()
-        {
-            _array = new T[32][];
-        }
-
-        public override T this[int index]
+        private readonly object _lock = new object();
+        private readonly List<TValue> _storage = new List<TValue>();
+        /// <summary>
+        /// support for negative indexes (read from end).  "myList[-1]" gets the last value
+        /// </summary>
+        /// <param name="index"></param>
+        /// <returns></returns>
+        public TValue this[int index]
         {
             get
             {
-                if (index < 0 || index >= _count)
+                lock (_lock)
                 {
-                    throw new ArgumentOutOfRangeException("index");
+                    if (index < 0)
+                    {
+                        index = this.Count - index;
+                    }
+                    return _storage[index];
                 }
-
-                int arrayIndex = GetArrayIndex(index + 1);
-                if (arrayIndex > 0)
+            }
+            set
+            {
+                lock (_lock)
                 {
-                    index -= ((int)Math.Pow(2, arrayIndex) - 1);
+                    if (index < 0)
+                    {
+                        index = this.Count - index;
+                    }
+                    _storage[index] = value;
                 }
-
-                return _array[arrayIndex][index];
             }
         }
 
-        public override int Count
+        public void Sort()
         {
-            get
+            lock (_lock)
             {
-                return _count;
+                _storage.Sort();
             }
         }
 
-        public override void Add(T element)
+        public int Count => _storage.Count;
+
+        bool ICollection<TValue>.IsReadOnly => ((IList<TValue>)_storage).IsReadOnly;
+
+        public void Add(TValue item)
         {
-            int index = Interlocked.Increment(ref _index) - 1;
-            int adjustedIndex = index;
-
-            int arrayIndex = GetArrayIndex(index + 1);
-            if (arrayIndex > 0)
+            lock (_lock)
             {
-                adjustedIndex -= Counts[arrayIndex - 1];
-            }
-
-            if (_array[arrayIndex] == null)
-            {
-                int arrayLength = Sizes[arrayIndex];
-                Interlocked.CompareExchange(ref _array[arrayIndex], new T[arrayLength], null);
-            }
-
-            _array[arrayIndex][adjustedIndex] = element;
-
-            int count = _count;
-            int fuzzyCount = Interlocked.Increment(ref _fuzzyCount);
-            if (fuzzyCount == index + 1)
-            {
-                Interlocked.CompareExchange(ref _count, fuzzyCount, count);
+                _storage.Add(item);
             }
         }
 
-        public override void CopyTo(T[] array, int index)
+        public void Clear()
         {
-            if (array == null)
+            lock (_lock)
             {
-                throw new ArgumentNullException("array");
-            }
-
-            int count = _count;
-            if (array.Length - index < count)
-            {
-                throw new ArgumentException("There is not enough available space in the destination array.");
-            }
-
-            int arrayIndex = 0;
-            int elementsRemaining = count;
-            while (elementsRemaining > 0)
-            {
-                T[] source = _array[arrayIndex++];
-                int elementsToCopy = Math.Min(source.Length, elementsRemaining);
-                int startIndex = count - elementsRemaining;
-
-                Array.Copy(source, 0, array, startIndex, elementsToCopy);
-
-                elementsRemaining -= elementsToCopy;
+                _storage.Clear();
             }
         }
 
-        private static int GetArrayIndex(int count)
+        public bool Contains(TValue item)
         {
-            int arrayIndex = 0;
-
-            if ((count & 0xFFFF0000) != 0)
+            lock (_lock)
             {
-                count >>= 16;
-                arrayIndex |= 16;
+                return _storage.Contains(item);
             }
-
-            if ((count & 0xFF00) != 0)
-            {
-                count >>= 8;
-                arrayIndex |= 8;
-            }
-
-            if ((count & 0xF0) != 0)
-            {
-                count >>= 4;
-                arrayIndex |= 4;
-            }
-
-            if ((count & 0xC) != 0)
-            {
-                count >>= 2;
-                arrayIndex |= 2;
-            }
-
-            if ((count & 0x2) != 0)
-            {
-                count >>= 1;
-                arrayIndex |= 1;
-            }
-
-            return arrayIndex;
         }
 
-        #region "Protected methods"
-
-        protected override bool IsSynchronizedBase
+        public void CopyTo(TValue[] array, int arrayIndex)
         {
-            get { return false; }
+            lock (_lock)
+            {
+                _storage.CopyTo(array, arrayIndex);
+            }
         }
 
-        #endregion
+
+        public int IndexOf(TValue item)
+        {
+            lock (_lock)
+            {
+                return _storage.IndexOf(item);
+            }
+        }
+
+        public void Insert(int index, TValue item)
+        {
+            lock (_lock)
+            {
+                _storage.Insert(index, item);
+            }
+        }
+
+        public bool Remove(TValue item)
+        {
+            lock (_lock)
+            {
+                return _storage.Remove(item);
+            }
+        }
+
+        public void RemoveAt(int index)
+        {
+            lock (_lock)
+            {
+                _storage.RemoveAt(index);
+            }
+        }
+
+        public IEnumerator<TValue> GetEnumerator()
+        {
+
+            lock (_lock)
+            {
+                lock (_lock)
+                {
+                    return (IEnumerator<TValue>)_storage.ToArray().GetEnumerator();
+                }
+            }
+        }
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 }
